@@ -21,10 +21,10 @@ mp_face_detection = mp.solutions.face_detection.FaceDetection(min_detection_conf
 MyFaceNet = FaceNet()
 
 # Load FaceNet recognizer and label encoder
-with open('/model/facenet/recognizer_facenet.pickle', 'rb') as f:
+with open('/model/facenet/recognizer_facenet3.pickle', 'rb') as f:
     recognizer = pickle.load(f)
 
-with open('/model/facenet/le_facenet.pickle', 'rb') as f:
+with open('/model/facenet/le_facenet3.pickle', 'rb') as f:
     le = pickle.load(f)
 
 def Attendance(emp_id, database_name, timestamp_now, max_pred):
@@ -83,6 +83,7 @@ def FaceNet_recog_mp(frame):
     max_pred = 0
     max_bbox = None
     max_name = None
+    text = 'unknown'
 
     for detection in results.detections:
         bboxC = detection.location_data.relative_bounding_box
