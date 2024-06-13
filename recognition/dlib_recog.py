@@ -18,11 +18,11 @@ app = Flask(__name__)
 
 # Initialize dlib's face detector and the face recognition model
 detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor("model/dlib/shape_predictor_68_face_landmarks.dat")
+predictor = dlib.shape_predictor("/model/dlib/shape_predictor_68_face_landmarks.dat")
 face_rec_model = dlib.face_recognition_model_v1("/model/dlib/dlib_face_recognition_resnet_model_v1.dat")
 
 # Load known faces and embeddings
-with open("model/dlib/encodings_dlib.pickle", "rb") as f:
+with open("/model/dlib/encodings_dlib.pickle", "rb") as f:
     data = pickle.load(f)
 
 def Attendance(emp_id, database_name, timestamp_now, accuracy):
@@ -164,4 +164,5 @@ if __name__ == "__main__":
     parser.add_argument('--url', type=str, required=True, help='URL of the video stream')
     args = parser.parse_args()
     url = args.url
+    # url = 'http://192.168.19.31:5000/video'
     app.run(host='0.0.0.0', port=5400, debug=True)
