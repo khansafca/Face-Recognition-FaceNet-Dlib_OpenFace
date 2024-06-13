@@ -11,7 +11,6 @@ import signal
 DATABASE_DIR = 'database'
 BACKGROUND_IMAGE_PATH = 'main gui.jpg'
 CAMERA_URL = 'http://172.20.10.14:5000/video_feed'
-# CAMERA_URL = 'http://192.168.14.214:4747/video' # android salma
 WINDOW_SIZE = "1000x700"
 
 # Create a directory to save the images if it doesn't exist
