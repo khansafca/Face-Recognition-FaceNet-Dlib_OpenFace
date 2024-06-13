@@ -5,172 +5,169 @@ import cv2
 import os
 import time
 import mediapipe as mp
+import signal
+
+# Constants
+DATABASE_DIR = 'database'
+BACKGROUND_IMAGE_PATH = 'main gui.jpg'
+CAMERA_URL = 'http://172.20.10.14:5000/video_feed'
+# CAMERA_URL = 'http://192.168.14.214:4747/video' # android salma
+WINDOW_SIZE = "1000x700"
 
 # Create a directory to save the images if it doesn't exist
-if not os.path.exists('database'):
-    os.makedirs('database')
+os.makedirs(DATABASE_DIR, exist_ok=True)
+
+recognize_process = None  # Global variable to store the face recognition process
 
 class CameraGUI:
     def __init__(self, master):
         self.master = master
-
-        # Load the background image, resize it, and set it as the background
-        img = Image.open("5.jpeg")
-        self.tk_img = ImageTk.PhotoImage(img)
-        label = tk.Label(master, image=self.tk_img)
-        label.pack()
-
-        self.register_button = tk.Button(master, text="Register", command=self.register)
-        self.register_button.pack()
-        self.register_button.place(x=115, y=350)
-
-        self.camera_button = tk.Button(master, text="Open Camera", command=self.open_camera)
-        self.camera_button.pack()
-        self.camera_button.place(x=100, y=495)
-
-        # Counter for the number of photos taken
+        self.setup_gui()
         self.photo_count = 0
-
-        # Initialize MediaPipe Face Detection
+        self.name = ''
         self.mp_face_detection = mp.solutions.face_detection
         self.face_detection = self.mp_face_detection.FaceDetection(min_detection_confidence=0.5)
 
-    def register(self):
-        self.name_label = tk.Label(self.master, text="Enter NIM:")
-        self.name_label.pack()
-        self.name_label.place(x=123, y=395)
-        
-        self.name_entry = tk.Entry(self.master)
-        self.name_entry.pack()
-        self.name_entry.place(x=55, y=420)
+    def setup_gui(self):
+        self.master.configure(bg="#242424")
+        self.master.geometry(WINDOW_SIZE)
 
-        self.name_button = tk.Button(self.master, text="Set NIM", command=self.set_name)
-        self.name_button.pack()
-        self.name_button.place(x=115, y=450)
+        self.main_frame = tk.Frame(self.master, bg="#242424")
+        self.main_frame.pack(expand=True, fill="both")
+
+        try:
+            img = Image.open(BACKGROUND_IMAGE_PATH)
+            self.tk_img = ImageTk.PhotoImage(img)
+            label = tk.Label(self.main_frame, image=self.tk_img, bg="#242424")
+            label.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        except Exception as e:
+            print(f"Error loading background image: {e}")
+
+        self.register_button = tk.Button(self.master, text="Register", command=self.register, font=("Arial", 10), height=1, width=8)
+        self.register_button.place(x=180, y=430)
+
+        self.camera_button = tk.Button(self.master, text="Open Camera", command=lambda: self.open_camera(CAMERA_URL), font=("Arial", 10), height=1, width=10)
+        self.camera_button.place(x=170, y=575)
+
+    def register(self):
+        self.name_label = tk.Label(self.master, text="Enter NIM:", font=("Arial", 10), height=1, width=8)
+        self.name_label.place(x=182, y=470)
+        
+        self.name_entry = tk.Entry(self.master, font=("Arial", 10, 'bold'), justify="center")
+        self.name_entry.place(x=142, y=500)
+
+        self.name_button = tk.Button(self.master, text="Set NIM", command=self.set_name, font=("Arial", 10), height=1, width=8)
+        self.name_button.place(x=180, y=530)
 
     def set_name(self):
         self.name = self.name_entry.get()
-        print("NIM set to:", self.name)
+        print(f"NIM set to: {self.name}")
 
-    def open_camera(self):
-            self.cap = cv2.VideoCapture(0)
-            cv2.namedWindow("Camera Feed")
+    def open_camera(self, url):
 
-            # Create a directory with the given name if it doesn't exist
-            folder_name = f'database/{self.name}'
-            if not os.path.exists(folder_name):
-                os.makedirs(folder_name)
+        if not self.name:
+            print("NIM not set. Please register first.")
+            return
 
-            # Set the start time
-            start_time = time.time()
+        cap = cv2.VideoCapture(1)
+        if not cap.isOpened():
+            print("Failed to open video stream.")
+            return
 
-            # Set the time interval (0.7 seconds)
-            interval = 0.7
+        cv2.namedWindow("Camera Feed")
 
-            # Add a flag for capturing
-            capturing = False
+        folder_name = os.path.join(DATABASE_DIR, self.name)
+        os.makedirs(folder_name, exist_ok=True)
 
-            while True:
-                ret, frame = self.cap.read()
+        start_time = time.time()
+        interval = 0.6
+        capturing = False
 
-                # Display the photo count on the frame
-                cv2.putText(frame, f'Count: {self.photo_count}', (20, 40), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-                cv2.imshow("Camera Feed", frame)
+            cv2.putText(frame, f'Count: {self.photo_count}', (20, 40), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            cv2.imshow("Camera Feed", frame)
 
-                key = cv2.waitKey(1) & 0xFF
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord(' '):
+                capturing = not capturing
+                if not capturing:
+                    print("Paused capturing.")
+                else:
+                    print("Resumed capturing.")
+                start_time = time.time()  # Reset start_time to avoid immediate capture on resume
 
-                # Press 'space' to start/stop capturing
-                if key == ord(' '):
-                    if capturing:
-                        self.photo_count = 0
-                        break
-                    else:
-                        capturing = True
+            if capturing and (time.time() - start_time) >= interval:
+                self.photo_count += 1
+                date_time = time.strftime("%Y%m%d%H%M%S")
+                photo_name = f'{self.name}_{date_time}.jpg'
+                cv2.imwrite(os.path.join(folder_name, photo_name), frame)
+                print(f'Photo saved as {photo_name}')
+                start_time = time.time()
 
-                # Get the current time
-                current_time = time.time()
+            if key == ord('q'):
+                print("Exiting camera feed.")
+                self.photo_count = 0
+                break
 
-                # Check if the time interval has passed and if capturing is True
-                if capturing and current_time - start_time >= interval:
-                    # Increase the photo count
-                    self.photo_count += 1
-                    date_time = time.strftime("%Y%m%d%H%M%S")
+        cap.release()
+        cv2.destroyAllWindows()
 
-                    # Save the frame as an image file
-                    photo_name = f'{self.name}_{date_time}.jpg'
-                    cv2.imwrite(os.path.join(folder_name, photo_name), frame)
-                    
-                    print(f'Photo saved as {photo_name}')
+def train_model(script_name):
+    subprocess.run(['python3', f'training/{script_name}'])
 
-                    # Update the start time
-                    start_time = current_time
+def recognize_model(script_name, url):
+    global recognize_process
+    recognize_process = subprocess.Popen(['python3', f'recognition/{script_name}', '--url', url])
 
-                # Press 'q' to quit
-                if key == ord('q'):
-                    break
+def stop_face_recognition():
+    global recognize_process
+    if recognize_process:
+        if os.name == 'nt':  # Check if running on Windows
+            recognize_process.send_signal(signal.CTRL_C_EVENT)
+        else:  # Unix-like systems
+            recognize_process.send_signal(signal.SIGINT)
+        recognize_process = None
 
-            self.cap.release()
-            cv2.destroyAllWindows()
+def create_train_buttons(root):
+    buttons = [
+        ("Facenet Train", lambda: train_model('training_facenet.py')),
+        ("Openface Train", lambda: train_model('training_openface.py')),
+        ("Dlib Train", lambda: train_model('training_dlib.py')),
+    ]
+    y_position = 480
+    button_width = 14
+    for text, command in buttons:
+        button = tk.Button(root, text=text, command=command, font=("Arial", 10, "bold"), width=button_width)
+        button.place(x=440, y=y_position)
+        y_position += 50
 
+def create_face_recognition(root, url):
+    buttons = [
+        ("Facenet", lambda: recognize_model('facenet_mediapipe_mp.py', url)),
+        ("Openface", lambda: recognize_model('openface_recog1.py', url)),
+        ("Dlib", lambda: recognize_model('dlib_recog1.py', url)),
+    ]
+    y_position = 480
+    button_width = 12
+    for text, command in buttons:
+        button = tk.Button(root, text=text, command=command, font=("Arial", 10, "bold"), width=button_width)
+        button.place(x=737, y=y_position)
+        y_position += 50
 
-def train_facenet():
-    subprocess.run(['python3', '/Users/khansafca/Documents/gui_fixed/facenet_recog/training_facenet_mp.py'])
+if __name__ == "__main__":
+    root = tk.Tk()
+    root.geometry("800x600")
+    app = CameraGUI(root)
 
-def train_openface():
-    subprocess.run(['python3', '/Users/khansafca/Documents/gui_fixed/openface/training.py'])
+    tk.Button(root, text="Train The Data", command=lambda: create_train_buttons(root), font=("Arial", 10), height=1, width=12).place(x=450, y=430)
+    tk.Button(root, text="Start Recognize", command=lambda: create_face_recognition(root, CAMERA_URL), font=("Arial", 10), height=1, width=14).place(x=730, y=430)
 
-def train_dlib():
-    subprocess.run(['python3', '/Users/khansafca/Documents/gui_fixed/dlib_recog/preprocess.py'])
-
-def facenet():
-    subprocess.run(['python3', '/Users/khansafca/Documents/gui_fixed/facenet_recog/facenet_mediapipe_mp.py'])
-
-def openface():
-    subprocess.run(['python3', '/Users/khansafca/Documents/gui_fixed/openface/openface_recog1.py'])
-
-def dlib():
-    subprocess.run(['python3', '//Users/khansafca/Documents/gui_fixed/dlib_recog/dlib_recog1.py'])
-
-def create_train_buttons():
-    button_facenet = tk.Button(root, text="Facenet Train", command=train_facenet)
-    button_facenet.pack()
-    button_facenet.place(x=340, y=415)
-
-    button_openface = tk.Button(root, text="Openface Train", command=train_openface)
-    button_openface.pack()
-    button_openface.place(x=335, y=455)
-
-    button_dlib = tk.Button(root, text="Dlib Train", command=train_dlib)
-    button_dlib.pack()
-    button_dlib.place(x=350, y=495)
-
-def create_face_recognition():
-    button_facenet = tk.Button(root, text="Facenet", command=facenet)
-    button_facenet.pack()
-    button_facenet.place(x=605, y=415)
-
-    button_openface = tk.Button(root, text="Openface", command=openface)
-    button_openface.pack()
-    button_openface.place(x=600, y=455)
-
-    button_dlib = tk.Button(root, text="Dlib", command=dlib)
-    button_dlib.pack()
-    button_dlib.place(x=620, y=495)
-
-root = tk.Tk()
-
-# Set the window size to 800x500
-root.geometry("800x600")
-
-app = CameraGUI(root)
-
-button_train = tk.Button(root, text="Train The Data", command=create_train_buttons)
-button_train.pack()
-button_train.place(x=335, y=350)
-
-button_train = tk.Button(root, text="Start Recognize", command=create_face_recognition)
-button_train.pack()
-button_train.place(x=580, y=350)
-
-root.mainloop()
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        # Handle Ctrl+C or window close event
+        stop_face_recognition()  # Stop the face recognition process if running
