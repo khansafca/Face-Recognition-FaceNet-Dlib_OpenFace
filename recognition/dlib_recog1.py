@@ -4,7 +4,7 @@ import cv2
 import time
 from os import listdir
 import datetime
-from flask import Flask, Response, render_template
+from flask import Flask, Response, render_template, render_template, request, jsonify
 import numpy as np
 import datetime
 import mysql.connector
@@ -18,12 +18,15 @@ app = Flask(__name__)
 
 # Initialize dlib's face detector and the face recognition model
 detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor("/model/dlib/shape_predictor_68_face_landmarks.dat")
-face_rec_model = dlib.face_recognition_model_v1("/model/dlib/dlib_face_recognition_resnet_model_v1.dat")
+predictor = dlib.shape_predictor("/Users/khansafca/Documents/gui_fixed/dlib_recog/model/shape_predictor_68_face_landmarks.dat")
+face_rec_model = dlib.face_recognition_model_v1("/Users/khansafca/Documents/gui_fixed/dlib_recog/model/dlib_face_recognition_resnet_model_v1.dat")
 
 # Load known faces and embeddings
-with open("/model/dlib/encodings_dlib.pickle", "rb") as f:
+with open("/Users/khansafca/Documents/gui_fixed/dlib_recog/encodings_dlib.pickle", "rb") as f:
     data = pickle.load(f)
+
+# List to store wrong recognition messages
+wrong_recognition_messages = []
 
 def Attendance(emp_id, database_name, timestamp_now, accuracy):
     try:
@@ -153,11 +156,29 @@ def gen_frames():
 
 @app.route('/')
 def index():
-    return render_template('show.html')
+    return render_template('show.html', wrong_recognition_messages=wrong_recognition_messages)
 
 @app.route('/video_feed')
 def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/wrong_recognition', methods=['POST'])
+def wrong_recognition():
+    text = request.form.get('text')
+    mistaken_name = request.form.get('mistaken_name')
+    timestamp_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    message = f"Wrong recognition for {text} on {timestamp_now} mistaken by {mistaken_name}"
+    
+    # Append the new message to the list
+    wrong_recognition_messages.append(message)
+    
+    # Return the entire list of messages as JSON
+    return jsonify(messages=wrong_recognition_messages)
+
+#@app.route('/get_wrong_recognition_messages', methods=['GET'])
+#def get_wrong_recognition_messages():
+    #return jsonify(messages=wrong_recognition_messages)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Face recognition using Facenet and Mediapipe')

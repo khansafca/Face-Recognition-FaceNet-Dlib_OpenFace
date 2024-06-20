@@ -1,16 +1,16 @@
+from flask import Flask, Response, render_template, request, jsonify
+import mediapipe as mp
 import argparse
 import cv2
-from flask import Flask, Response, render_template
-import mediapipe as mp
 from PIL import Image
-import time
-import os
-import datetime
 import numpy as np
 from numpy import asarray, expand_dims
 from keras_facenet import FaceNet
 import pickle
 import mysql.connector
+import datetime
+import time
+import os
 
 app = Flask(__name__)
 
@@ -21,11 +21,14 @@ mp_face_detection = mp.solutions.face_detection.FaceDetection(min_detection_conf
 MyFaceNet = FaceNet()
 
 # Load FaceNet recognizer and label encoder
-with open('/model/facenet/recognizer_facenet3.pickle', 'rb') as f:
+with open('/Users/khansafca/Documents/gui_fixed/facenet_recog/recognizer_facenet.pickle', 'rb') as f:
     recognizer = pickle.load(f)
 
-with open('/model/facenet/le_facenet3.pickle', 'rb') as f:
+with open('/Users/khansafca/Documents/gui_fixed/facenet_recog/le_facenet.pickle', 'rb') as f:
     le = pickle.load(f)
+
+# List to store wrong recognition messages
+wrong_recognition_messages = []
 
 def Attendance(emp_id, database_name, timestamp_now, max_pred):
     try:
@@ -158,15 +161,52 @@ def gen_frames():
 
 @app.route('/')
 def index():
-    return render_template('show.html')
+    return render_template('show.html', wrong_recognition_messages=wrong_recognition_messages)
 
 @app.route('/video_feed')
 def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/wrong_recognition', methods=['POST'])
+def wrong_recognition(emp_id):
+    true_name = request.form.get('true_name')
+    mistaken_name = request.form.get('mistaken_name')
+    timestamp_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    message = f"Wrong recognition for {true_name} on {timestamp_now} mistaken by {mistaken_name}"
+    
+    # Append the new message to the list
+    wrong_recognition_messages.append(message)
+    
+    # Update the MySQL database with the new wrong recognition details
+    try:
+        connection = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password='',
+            port='3308',
+            database='your_database_name'  # Replace with your actual database name
+        )
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE wrong SET nama_asli = %s, nama_salah = %s, timestamp_salah = %s WHERE id = %s",
+            (true_name, mistaken_name, timestamp_now, emp_id)  # Replace 'your_condition_id' with your actual condition for updating
+        )
+        connection.commit()
+        cursor.close()
+        connection.close()
+    except Exception as e:
+        print(f"Error updating database: {e}")
+
+    # Return the entire list of messages as JSON
+    return jsonify(messages=wrong_recognition_messages)
+
+#@app.route('/get_wrong_recognition_messages', methods=['GET'])
+#def get_wrong_recognition_messages():
+    #return jsonify(messages=wrong_recognition_messages)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Face recognition using Facenet and Mediapipe')
     parser.add_argument('--url', type=str, required=True, help='URL of the video stream')
     args = parser.parse_args()
     url = args.url
-    app.run(host='0.0.0.0', port=5200, debug=True)
+    app.run(host='0.0.0.0', port=5100, debug=True)

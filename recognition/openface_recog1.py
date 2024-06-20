@@ -1,5 +1,5 @@
 import argparse
-from flask import Flask, Response, render_template
+from flask import Flask, Response, render_template, request, jsonify
 import numpy as np
 import pickle
 import os
@@ -22,15 +22,18 @@ print("Loading face recognition model")
 recognition_model = './model/openface_nn4.small2.v1.t7'
 face_recognizer = cv2.dnn.readNetFromTorch(model=recognition_model)
 
-recognizer_path = 'model/openface/recognizer_openface.pickle'
+recognizer_path = '/Users/khansafca/Documents/gui_fixed/openface/recognizer_openface.pickle'
 with open(recognizer_path, 'rb') as f:
     recognizer = pickle.load(f)
 
-le_path = 'model/openface/le_openface.pickle'
+le_path = '/Users/khansafca/Documents/gui_fixed/openface/le_openface.pickle'
 with open(le_path, 'rb') as f:
     le = pickle.load(f)
 
 print("Starting test video file")
+
+# List to store wrong recognition messages
+wrong_recognition_messages = []
 
 def Attendance(emp_id, database_name, timestamp_now, proba):
     try:
@@ -116,7 +119,7 @@ def openface_recog(frame):
             proba = preds[j]
             name = le.classes_[j]
             emp_name= name
-            #emp_name = Attendance(name, 'absen', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), proba)
+            emp_name = Attendance(name, 'absen', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), proba)
             if emp_name:
                 text = "{}: {:.2f}".format(emp_name, proba * 100)
                 y = startY - 10 if startY - 10 > 10 else startY + 10
@@ -135,7 +138,7 @@ def gen_frames():
             break
 
         result, emp_name, proba = openface_recog(frame)
-        #cv2.imshow('OpenFace', result)
+        cv2.imshow('OpenFace', result)
         ret, buffer = cv2.imencode('.jpg', result)
         if ret:
             frame = buffer.tobytes()  # Convert numpy array to string
@@ -165,17 +168,35 @@ def gen_frames():
 
 
 @app.route('/')
+@app.route('/')
 def index():
-    return render_template('show.html')
+    return render_template('show.html', wrong_recognition_messages=wrong_recognition_messages)
 
 @app.route('/video_feed')
 def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/wrong_recognition', methods=['POST'])
+def wrong_recognition():
+    text = request.form.get('text')
+    mistaken_name = request.form.get('mistaken_name')
+    timestamp_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    message = f"Wrong recognition for {text} on {timestamp_now} mistaken by {mistaken_name}"
+    
+    # Append the new message to the list
+    wrong_recognition_messages.append(message)
+    
+    # Return the entire list of messages as JSON
+    return jsonify(messages=wrong_recognition_messages)
+
+#@app.route('/get_wrong_recognition_messages', methods=['GET'])
+#def get_wrong_recognition_messages():
+    #return jsonify(messages=wrong_recognition_messages)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Face recognition using Facenet and Mediapipe')
     parser.add_argument('--url', type=str, required=True, help='URL of the video stream')
     args = parser.parse_args()
     url = args.url
-    # url = 'http://192.168.19.31:5000/video'
     app.run(host='0.0.0.0', port=5300, debug=True)
