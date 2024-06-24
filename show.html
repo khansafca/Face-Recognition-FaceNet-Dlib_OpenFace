@@ -5,28 +5,84 @@
     <title>Face Recognition Attendance System</title>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        #container {
+            display: flex;
+        }
+        #video-container {
+            flex: 1;
+        }
+        #control-panel {
+            flex: 1;
+            margin-left: 20px;
+        }
+        #correction-form {
+            display: none;
+            margin-top: 20px;
+        }
+        button, label, input, #response-message {
+            font-size: 18px;
+        }
+        h1 {
+            font-size: 32px;
+        }
+        #present-now {
+            background-color: green;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        #wrong-recognition {
+            background-color: red;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        #submit-correction {
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .form-group {
+            margin-bottom: 1.5em;
+        }
+    </style>
 </head>
 <body>
     <h1>Face Recognition Attendance System</h1>
-    <div>
-        <img id="video-feed" src="{{ url_for('video_feed') }}" width="800" height="600">
-    </div>
-    <br>
-    <button id="present-now">Present Now</button>
-    <button id="wrong-recognition">Wrong Recognition</button>
-    <div id="correction-form" style="display: none;">
-        <form id="correctionForm">
-            <label for="real-name">Real Name:</label>
-            <input type="text" id="real-name" name="real-name" required>
+    <div id="container">
+        <div id="video-container">
+            <img id="video-feed" src="{{ url_for('video_feed') }}" width="800" height="600">
+        </div>
+        <div id="control-panel">
+            <button id="present-now">Present Now</button>
+            <button id="wrong-recognition">Wrong Recognition</button>
+            <div id="correction-form">
+                <form id="correctionForm">
+                    <div class="form-group">
+                        <label for="real-name">Real Name:</label>
+                        <input type="text" id="real-name" name="real-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="operator-code">Operator Code:</label>
+                        <input type="text" id="operator-code" name="operator-code" required>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" id="submit-correction">Submit</button>
+                    </div>
+                </form>
+            </div>
             <br>
-            <label for="operator-code">Operator Code:</label>
-            <input type="text" id="operator-code" name="operator-code" required>
-            <br>
-            <button type="submit" id="submit-correction">Submit</button>
-        </form>
+            <div id="response-message"></div>
+        </div>
     </div>
-    <br>
-    <div id="response-message"></div>
     <script>
         $(document).ready(function() {
             var socket = io.connect('http://' + document.domain + ':' + location.port);
