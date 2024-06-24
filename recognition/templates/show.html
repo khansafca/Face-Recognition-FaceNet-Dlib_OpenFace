@@ -130,7 +130,7 @@
                     type: 'POST',
                     url: '/wrong_recognition',
                     contentType: 'application/json',
-                    data: JSON.stringify({ real_name: realName, kode_operator: kodeOperator }),
+                    data: JSON.stringify({ real_name: realName, operator_code: kodeOperator }),
                     success: function(response) {
                         $('#response-message').text(response.message);
                         if (response.success) {

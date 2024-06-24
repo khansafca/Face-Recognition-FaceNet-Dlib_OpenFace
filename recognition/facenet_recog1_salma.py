@@ -257,6 +257,7 @@ def FaceNet_recog_mp(frame, now):
                         photo_name = f"{timestamp_now}_{most_common_name}_{max_prob}.jpg"
                         cv2.imwrite(os.path.join(folder_name, photo_name), frame)
 
+
                 else:
                     names_probs.clear()
 
@@ -307,7 +308,7 @@ def notify_gui_of_error(message):
 
 @app.route('/wrong_recognition', methods=['POST'])
 def wrong_recognition():
-    global last_recognized_nameid, last_recognized_name, last_recognized_prob
+    global last_recognized_nameid, last_recognized_name, last_recognized_prob, operator_code
 
     if not last_recognized_nameid or not last_recognized_name:
         return jsonify(success=False, message="No recognized name to correct")
@@ -344,8 +345,8 @@ def wrong_recognition():
         timestamp_now = datetime.datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
 
         if log_error(last_recognized_nameid, timestamp_now, real_name_id, operator_code):
+            notify_gui_of_error(f"Error: {real_name}-{real_name_id} was not {last_recognized_name}-{last_recognized_nameid}")
             last_recognized_nameid, last_recognized_name, last_recognized_prob = None, None, None
-            notify_gui_of_error(f"Error: {real_name} was not {last_recognized_name}")
             return jsonify(success=True, message="Successfully corrected real identity")
         else:
             return jsonify(success=False, message="Error correcting identity")
