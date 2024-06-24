@@ -198,7 +198,7 @@ def create_face_recognition(root, url):
             threading.Thread(target=recognize_model, args=(script_name, url, camera_id)).start()
 
     buttons = [
-        ("Facenet", lambda: start_recognition('facenet_mediapipe_mp_largerface.py')),
+        ("Facenet", lambda: start_recognition('facenet_recog1_salma.py')),
         ("Openface", lambda: start_recognition('openface_recog1.py')),
         ("Dlib", lambda: start_recognition('dlib_recog1.py'))]
 

@@ -52,7 +52,7 @@ def get_next_no():
             host='localhost',
             user='root',
             password='',
-            port='3308',
+            port='3306',
             database='absen'
         )
         cursor = connection.cursor()
@@ -72,7 +72,7 @@ def Name(emp_id, database_name):
             host='localhost',
             user='root',
             password='',
-            port='3308',
+            port='3306',
             database=database_name
         )
 
@@ -98,7 +98,7 @@ def Attendance(emp_id, database_name, timestamp_now, max_pred):
             host='localhost',
             user='root',
             password='',
-            port='3308',
+            port='3306',
             database=database_name
         )
 
@@ -129,7 +129,7 @@ def log_error(emp_id, timestamp_now, real_name, operator_code):
             host='localhost',
             user='root',
             password='',
-            port='3308',
+            port='3306',
             database='absen'
         )
 
@@ -161,8 +161,19 @@ def log_error(emp_id, timestamp_now, real_name, operator_code):
         return False
 
 def FaceNet_recog_mp(frame, now):
-    global face_timer, last_recognized_name, last_recognized_prob, last_recognized_nameid, recognition_paused
+    global face_timer, last_recognized_name, last_recognized_prob, last_recognized_nameid, recognition_paused, names_probs
+
+    height, width, _ = frame.shape
+    x, y = int(0.25*width), int(0.8*height)
+    w, h = int(0.5*width), int(0.08*height)
+    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 0), -1)
+
     if recognition_paused:
+        text = "{} - {}%".format(last_recognized_name, last_recognized_prob)
+        (text_width, text_height), baseline = cv2.getTextSize(text,  cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        text_x = x + (w - text_width) // 2
+        text_y = y + (h + text_height) // 2
+        cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         return frame, None, None
 
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -177,13 +188,8 @@ def FaceNet_recog_mp(frame, now):
 
     if face_timer is None:
         face_timer = datetime.datetime.now()
-    
-    height, width, _ = frame.shape
-    x, y = int(0.25*width), int(0.8*height)
-    w, h = int(0.5*width), int(0.08*height)
-    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 0), -1)
 
-    # Inisiasi teks
+    # Initialize text
     text_color, font, font_scale, thickness = (255, 255, 255), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
     most_common_name, max_face_area, largest_face_bbox = 'Unknown', 0, None
 
@@ -210,8 +216,8 @@ def FaceNet_recog_mp(frame, now):
             names_probs.clear()
             return frame, None, None
         
-        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 255, 0), 2) # kotak wajah
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 0), -1) # kotak background text
+        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 255, 0), 2) # face rectangle
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 0), -1) # text background rectangle
         face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
         face = Image.fromarray(face)
         face = face.resize((160, 160))
@@ -228,7 +234,14 @@ def FaceNet_recog_mp(frame, now):
         else:
             names_probs[name].append(prob)
 
-        if (datetime.datetime.now() - face_timer).total_seconds() > 5.5:
+        if (datetime.datetime.now() - face_timer).total_seconds() < 5:
+            text = str(datetime.datetime.now() - face_timer)
+            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+            text_x = x + (w - text_width) // 2
+            text_y = y + (h + text_height) // 2
+            cv2.putText(frame, text, (text_x, text_y), font, font_scale, text_color, thickness)
+
+        else:
             if names_probs:
                 most_common_nameid = max(names_probs, key=lambda k: (len(names_probs[k]), max(names_probs[k])))
                 max_prob = max(names_probs[most_common_nameid])
@@ -243,9 +256,6 @@ def FaceNet_recog_mp(frame, now):
                         os.makedirs(folder_name, exist_ok=True)
                         photo_name = f"{timestamp_now}_{most_common_name}_{max_prob}.jpg"
                         cv2.imwrite(os.path.join(folder_name, photo_name), frame)
-                        
-                        # Send success message to the server
-                        #socketio.emit('message', {"message": f"{most_common_name} successfully recorded at {now.strftime('%Y-%m-%d_%H:%M:%S')} "})
 
                 else:
                     names_probs.clear()
@@ -261,44 +271,57 @@ def FaceNet_recog_mp(frame, now):
 
                 cv2.putText(frame, text, (text_x, text_y), font, font_scale, text_color, thickness)
 
-        elif (datetime.datetime.now() - face_timer).total_seconds() > 6:
-            text1 = str(datetime.datetime.now() - face_timer)
-            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-            text_x = x + (w - text_width) // 2
-            text_y = y + (h + text_height) // 2
+        print(names_probs)
 
-            cv2.putText(frame, text1, (text_x, text_y), font, font_scale, text_color, thickness)
+        # elif (datetime.datetime.now() - face_timer).total_seconds() > 6:
+        #     text1 = str(datetime.datetime.now() - face_timer)
+        #     (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+        #     text_x = x + (w - text_width) // 2
+        #     text_y = y + (h + text_height) // 2
+
+        #     cv2.putText(frame, text1, (text_x, text_y), font, font_scale, text_color, thickness)
         
-        elif (datetime.datetime.now() - face_timer).total_seconds() > 10:
-            text2 = "Waiting for next recognition"
-            (text_width, text_height), baseline = cv2.getTextSize(text2, font, font_scale, thickness)
-            text_x = x + (w - text_width) // 2
-            text_y = y + (h + text_height) // 2
+        # elif (datetime.datetime.now() - face_timer).total_seconds() > 10:
+        #     text2 = "Waiting for next recognition"
+        #     (text_width, text_height), baseline = cv2.getTextSize(text2, font, font_scale, thickness)
+        #     text_x = x + (w - text_width) // 2
+        #     text_y = y + (h + text_height) // 2
 
-            cv2.putText(frame, text2, (text_x, text_y), font, font_scale, text_color, thickness)
+        #     cv2.putText(frame, text2, (text_x, text_y), font, font_scale, text_color, thickness)
    
     return frame, most_common_name, prob
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/')
 def index():
     return render_template('show.html')
 
+def notify_gui_of_error(message):
+    try:
+        requests.post('http://localhost:5001/report_error', json={'error_message': message})
+    except Exception as e:
+        print(f"Failed to notify GUI: {e}")
+
 @app.route('/wrong_recognition', methods=['POST'])
 def wrong_recognition():
     global last_recognized_nameid, last_recognized_name, last_recognized_prob
+
     if not last_recognized_nameid or not last_recognized_name:
         return jsonify(success=False, message="No recognized name to correct")
 
     data = request.get_json()
     real_name = data.get('real_name')
-    kode_operator = data.get('kode_operator')
+    operator_code = data.get('operator_code')
 
     try:
         connection = mysql.connector.connect(
             host='localhost',
             user='root',
             password='',
-            port='3308',
+            port='3306',
             database='absen'
         )
 
@@ -307,7 +330,7 @@ def wrong_recognition():
         result = cursor.fetchone()
 
         if not result:
-            return jsonify(success=False, message="Real name not found in profile database")
+            return jsonify(success=False, message="Name not found in database")
 
         real_name_id = result[0]
 
@@ -320,12 +343,12 @@ def wrong_recognition():
 
         timestamp_now = datetime.datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
 
-        if log_error(last_recognized_nameid, timestamp_now, real_name_id, kode_operator):
+        if log_error(last_recognized_nameid, timestamp_now, real_name_id, operator_code):
             last_recognized_nameid, last_recognized_name, last_recognized_prob = None, None, None
-            face_timer = None
-            return jsonify(success=True, message="Correction submitted successfully")
+            notify_gui_of_error(f"Error: {real_name} was not {last_recognized_name}")
+            return jsonify(success=True, message="Successfully corrected real identity")
         else:
-            return jsonify(success=False, message="Error logging correction")
+            return jsonify(success=False, message="Error correcting identity")
 
     except Exception as e:
         print("Error:", e)
@@ -335,15 +358,17 @@ def wrong_recognition():
 def pause_recognition():
     global recognition_paused
     recognition_paused = True
-    return jsonify(success=True, message="Recognition paused")
+    return jsonify(success=True, message="System paused temporarily")
 
 @app.route('/resume_recognition', methods=['POST'])
 def resume_recognition():
-    global recognition_paused
+    global recognition_paused, names_probs
+    names_probs.clear()
     recognition_paused = False
-    return jsonify(success=True, message="Recognition resumed")
+    return jsonify(success=True, message="Real identities successfully entered. System resumed")
 
 def gen_frames():
+    global last_recognized_name, last_recognized_prob, last_recognized_nameid
     cap = cv2.VideoCapture(url)
     time.sleep(3)  # Initial delay for the camera to warm up
 
@@ -397,13 +422,18 @@ def present_now():
     else:
         return jsonify(success=False, message="Error recording attendance")
 
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
 if __name__ == "__main__":
     global camera_id
-    url = 1
-    camera_id = 2
+    parser = argparse.ArgumentParser(description='Face recognition using Facenet and Mediapipe')
+    parser.add_argument('--camera_id', type=str, required=True, help='Camera ID')
+    parser.add_argument('--url', type=str, required=True, help='URL of the video stream')
+    args = parser.parse_args()
+    url = 1 # args.url
+    camera_id = args.camera_id
     socketio.run(app, host='0.0.0.0', port=5100, debug=True)
+
+# if __name__ == "__main__":
+#     global camera_id
+#     url = 1
+#     camera_id = 2
+#     socketio.run(app, host='0.0.0.0', port=5100, debug=True)

@@ -106,7 +106,18 @@
             });
 
             $('#wrong-recognition').click(function() {
-                $('#correction-form').css('display', 'block');
+                $.ajax({
+                    type: 'POST',
+                    url: '/pause_recognition',
+                    success: function(response) {
+                        $('#response-message').text(response.message);
+                        $('#correction-form').css('display', 'block');
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error:', error);
+                        $('#response-message').text('Error pausing recognition');
+                    }
+                });
             });
 
             $('#correctionForm').submit(function(event) {
@@ -123,7 +134,18 @@
                     success: function(response) {
                         $('#response-message').text(response.message);
                         if (response.success) {
-                            $('#correction-form').css('display', 'none');
+                            $.ajax({
+                                type: 'POST',
+                                url: '/resume_recognition',
+                                success: function(response) {
+                                    $('#response-message').text(response.message);
+                                    $('#correction-form').css('display', 'none');
+                                },
+                                error: function(xhr, status, error) {
+                                    console.error('Error:', error);
+                                    $('#response-message').text('Error resuming recognition');
+                                }
+                            });
                         }
                     },
                     error: function(xhr, status, error) {

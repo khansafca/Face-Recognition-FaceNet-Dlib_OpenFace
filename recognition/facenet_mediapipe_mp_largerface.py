@@ -18,7 +18,6 @@ import pickle
 import mysql.connector
 import re
 from collections import defaultdict
-
 import requests
 
 # Initialize
@@ -147,28 +146,6 @@ def log_error(database_name, max_pred, emp_id, real_name, timestamp_now, camera_
         print("Error logging to database:", e)
         return False
 
-def notify_gui_of_error(message):
-    try:
-        requests.post('http://localhost:5001/report_error', json={'error_message': message})
-    except Exception as e:
-        print(f"Failed to notify GUI: {e}")
-
-@app.route('/report_error', methods=['POST'])
-def report_error():
-    global capture_active, last_recognized_prob, last_recognized_nameid, real_name, timestamp_now
-    data = request.get_json()
-    real_name = data.get('real_name')
-    
-    if last_recognized_name and last_recognized_prob and last_recognized_nameid:
-        capture_active = False  # Pause capture
-        success = log_error('attendance', last_recognized_prob, last_recognized_nameid, real_name, timestamp_now, camera_id, operator_code)
-        if success:
-            notify_gui_of_error(f"Error reported: {real_name} was not {last_recognized_name}")
-        capture_active = True  # Reactivate the capture promptly
-        return jsonify({'success': success})
-    return jsonify({'success': False})
-
-
 def FaceNet_recog_mp(frame, now):
     global face_timer, last_recognized_name, last_recognized_prob, last_recognized_nameid, capture_active, timestamp_now, max_prob, timestamp_now
     if not capture_active:
@@ -281,6 +258,28 @@ def FaceNet_recog_mp(frame, now):
             # cv2.putText(frame, str(datetime.datetime.now() - face_timer), (50, 50), font, font_scale, text_color, thickness)
 
     return frame, most_common_name, max_prob
+
+def notify_gui_of_error(message):
+    try:
+        requests.post('http://localhost:5001/report_error', json={'error_message': message})
+    except Exception as e:
+        print(f"Failed to notify GUI: {e}")
+
+@app.route('/report_error', methods=['POST'])
+def report_error():
+    global capture_active, last_recognized_prob, last_recognized_nameid, real_name, timestamp_now
+    data = request.get_json()
+    real_name = data.get('real_name')
+    
+    if last_recognized_name and last_recognized_prob and last_recognized_nameid:
+        capture_active = False  # Pause capture
+        success = log_error('attendance', last_recognized_prob, last_recognized_nameid, real_name, timestamp_now, camera_id, operator_code)
+        if success:
+            notify_gui_of_error(f"Error reported: {real_name} was not {last_recognized_name}")
+        capture_active = True  # Reactivate the capture promptly
+        return jsonify({'success': success})
+    return jsonify({'success': False})
+
 
 def gen_frames():
     cap = cv2.VideoCapture(url)
