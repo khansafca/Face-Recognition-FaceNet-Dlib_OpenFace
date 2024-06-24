@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog
 import subprocess
 from PIL import Image, ImageTk
 import cv2
@@ -25,7 +25,7 @@ def run_flask_app():
 
 # Constants
 DATABASE_DIR = 'database'
-BACKGROUND_IMAGE_PATH = 'C:/Salma/UNJ/Kuliah/semester 6 (120)/Magang/face recognition/0. Last one/main_gui.jpg'
+BACKGROUND_IMAGE_PATH = 'main_gui (1).png'
 CAMERA_URL = 'http://192.168.1.3:4747/video' #1
 WINDOW_SIZE = "1000x700"
 
@@ -40,6 +40,7 @@ class CameraGUI:
         self.setup_gui()
         self.photo_count = 0
         self.name = ''
+        self.register()
 
     def setup_gui(self):
         self.master.configure(bg="#242424")
@@ -56,21 +57,21 @@ class CameraGUI:
         except Exception as e:
             print(f"Error loading background image: {e}")
 
-        self.register_button = tk.Button(self.master, text="Register", command=self.register, font=("Arial", 10), height=1, width=8)
-        self.register_button.place(x=180, y=430)
+        self.register_button = tk.Button(self.master, text="Register", command=self.register, font=("Arial", 10), height=1, width=12)
+        self.register_button.place(x=163, y=435)
 
-        self.camera_button = tk.Button(self.master, text="Open Camera", command=lambda: self.open_camera(CAMERA_URL), font=("Arial", 10), height=1, width=10)
-        self.camera_button.place(x=170, y=575)
+        self.camera_button = tk.Button(self.master, text="Open Camera", command=lambda: self.open_camera(CAMERA_URL), font=("Arial", 10, 'bold'), height=1, width=12)
+        self.camera_button.place(x=163, y=580)
 
     def register(self):
-        self.name_label = tk.Label(self.master, text="Enter NIM:", font=("Arial", 10), height=1, width=8)
-        self.name_label.place(x=182, y=470)
+        self.name_label = tk.Label(self.master, text="Enter NIM:", font=("Arial", 10), height=1, width=9)
+        self.name_label.place(x=175, y=475)
         
         self.name_entry = tk.Entry(self.master, font=("Arial", 10, 'bold'), justify="center")
-        self.name_entry.place(x=142, y=500)
+        self.name_entry.place(x=142, y=505)
 
-        self.name_button = tk.Button(self.master, text="Set NIM", command=self.set_name, font=("Arial", 10), height=1, width=8)
-        self.name_button.place(x=180, y=530)
+        self.name_button = tk.Button(self.master, text="Set NIM", command=self.set_name, font=("Arial", 10), height=1, width=9)
+        self.name_button.place(x=175, y=535)
 
     def set_name(self):
         self.name = self.name_entry.get()
@@ -135,13 +136,35 @@ def train_model(script_name, data_path):
     else:
         subprocess.Popen(['xterm', '-hold', '-e', command])
 
-def recognize_model(script_name, url):
-    global recognize_process
-    command = f'python recognition/{script_name} --url {url}'
+def recognize_model(script_name, url, camera_id):
+    global recognize_process, recognize_pid
+    command = f'python recognition/{script_name} --url {url} --camera_id {camera_id}'
     if platform.system() == "Windows":
-        recognize_process = subprocess.Popen(['start', 'cmd', '/k', command], shell=True)
+        recognize_process = subprocess.Popen(command, shell=True)
     else:
-        recognize_process = subprocess.Popen(['xterm', '-hold', '-e', command])
+        recognize_process = subprocess.Popen(command.split())
+
+    recognize_pid = recognize_process.pid  # Store the PID of the recognition process
+    print(f"Face recognition process started with PID: {recognize_pid}")
+
+def stop_face_recognition():
+    global recognize_process, recognize_pid
+    if recognize_process:
+        try:
+            if platform.system() == "Windows":
+                subprocess.Popen(['taskkill', '/F', '/T', '/PID', str(recognize_pid)], shell=True)
+            else:
+                recognize_process.terminate()
+                recognize_process.kill()  # Force kill if terminate doesn't work immediately
+
+            recognize_pid = None
+            recognize_process = None
+            print("Proses pengenalan wajah telah dihentikan")
+            
+        except Exception as e:
+            print(f"Gagal menghentikan proses pengenalan wajah: {e}")
+    else:
+        print("Tidak ada proses pengenalan wajah yang sedang berjalan.")
 
 def select_folder():
     folder_path = filedialog.askdirectory()
@@ -160,7 +183,7 @@ def create_train_buttons(root):
         ("Openface Train", lambda: run_train_model('training_openface.py')),
         ("Dlib Train", lambda: run_train_model('training_dlib.py')),
     ]
-    y_position = 480
+    y_position = 485
     button_width = 14
     for text, command in buttons:
         button = tk.Button(root, text=text, command=command, font=("Arial", 10, "bold"), width=button_width)
@@ -168,17 +191,24 @@ def create_train_buttons(root):
         y_position += 50
 
 def create_face_recognition(root, url):
+    def start_recognition(script_name):
+        camera_id = simpledialog.askstring("Input", "Enter Camera ID:", parent=root)
+        if camera_id:
+            # new_url = f"http://192.168.1.{camera_id}:4747/video"
+            threading.Thread(target=recognize_model, args=(script_name, url, camera_id)).start()
+
     buttons = [
-        ("Facenet", lambda: threading.Thread(target=recognize_model, args=('facenet_mediapipe_mp_largerface.py', url)).start()),
-        ("Openface", lambda: threading.Thread(target=recognize_model, args=('openface_recog1.py', url)).start()),
-        ("Dlib", lambda: threading.Thread(target=recognize_model, args=('dlib_recog1.py', url)).start()),
-    ]
-    y_position = 480
+        ("Facenet", lambda: start_recognition('facenet_mediapipe_mp_largerface.py')),
+        ("Openface", lambda: start_recognition('openface_recog1.py')),
+        ("Dlib", lambda: start_recognition('dlib_recog1.py'))]
+
+    y_position = 485
     button_width = 12
     for text, command in buttons:
         button = tk.Button(root, text=text, command=command, font=("Arial", 10, "bold"), width=button_width)
         button.place(x=737, y=y_position)
         y_position += 50
+
 
 if __name__ == "__main__":
     root = tk.Tk()
@@ -189,8 +219,12 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    tk.Button(root, text="Train The Data", command=lambda: create_train_buttons(root), font=("Arial", 10), height=1, width=12).place(x=450, y=430)
-    tk.Button(root, text="Start Recognize", command=lambda: create_face_recognition(root, CAMERA_URL), font=("Arial", 10), height=1, width=14).place(x=730, y=430)
+    tk.Button(root, text="Train The Data",  font=("Arial", 10), height=1, width=12).place(x=450, y=435)
+    create_train_buttons(root)
+    tk.Button(root, text="Start Recognize", font=("Arial", 10), height=1, width=14).place(x=730, y=435)
+    create_face_recognition(root, CAMERA_URL)
+    tk.Button(root, text="Stop Recognize", command=stop_face_recognition, font=("Arial", 10, 'bold'), height=1, width=14).place(x=442, y=360)
+    #tk.Button(root, text="Stop Recognize", command=stop_face_recognition, font=("Arial", 10), height=1, width=103).place(x=85, y=365)
 
     def check_for_errors():
         global error_message
@@ -199,8 +233,9 @@ if __name__ == "__main__":
             error_message = None
         root.after(1000, check_for_errors)
 
-    error_label = tk.Label(root, text="", font=("Arial", 10), fg="red")
-    error_label.place(x=400, y=400)
+    error_label = tk.Label(root, text="", font=("Arial", 11), fg="red", bd=0, highlightthickness=0)
+    error_label.place(relx=0.5, rely=0.47, anchor=tk.CENTER)
+
 
     root.after(1000, check_for_errors)
 
@@ -208,4 +243,3 @@ if __name__ == "__main__":
         root.mainloop()
     except KeyboardInterrupt:
         pass
-
