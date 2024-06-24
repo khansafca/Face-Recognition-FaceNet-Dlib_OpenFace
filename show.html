@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Face Recognition Attendance System</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+</head>
+<body>
+    <h1>Face Recognition Attendance System</h1>
+    <div>
+        <img id="video-feed" src="{{ url_for('video_feed') }}" width="800" height="600">
+    </div>
+    <br>
+    <button id="present-now">Present Now</button>
+    <button id="wrong-recognition">Wrong Recognition</button>
+    <div id="correction-form" style="display: none;">
+        <form id="correctionForm">
+            <label for="real-name">Real Name:</label>
+            <input type="text" id="real-name" name="real-name" required>
+            <br>
+            <label for="operator-code">Operator Code:</label>
+            <input type="text" id="operator-code" name="operator-code" required>
+            <br>
+            <button type="submit" id="submit-correction">Submit</button>
+        </form>
+    </div>
+    <br>
+    <div id="response-message"></div>
+    <script>
+        $(document).ready(function() {
+            var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+            socket.on('message', function(data) {
+                $('#response-message').text(data.message);
+            });
+
+            $('#present-now').click(function() {
+                $.ajax({
+                    type: 'POST',
+                    url: '/present_now',
+                    success: function(response) {
+                        $('#response-message').text(response.message);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error:', error);
+                        $('#response-message').text('Error recording attendance');
+                    }
+                });
+            });
+
+            $('#wrong-recognition').click(function() {
+                $('#correction-form').css('display', 'block');
+            });
+
+            $('#correctionForm').submit(function(event) {
+                event.preventDefault(); // Prevent default form submission
+
+                var realName = $('#real-name').val();
+                var kodeOperator = $('#operator-code').val();
+
+                $.ajax({
+                    type: 'POST',
+                    url: '/wrong_recognition',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ real_name: realName, kode_operator: kodeOperator }),
+                    success: function(response) {
+                        $('#response-message').text(response.message);
+                        if (response.success) {
+                            $('#correction-form').css('display', 'none');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error:', error);
+                        $('#response-message').text('Error submitting correction');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
