@@ -25,7 +25,7 @@ def run_flask_app():
 
 # Constants
 DATABASE_DIR = 'database'
-BACKGROUND_IMAGE_PATH = 'main_gui (1).png'
+BACKGROUND_IMAGE_PATH = 'template_GUI.png'
 CAMERA_URL = 'http://192.168.1.3:4747/video' #1
 WINDOW_SIZE = "1000x700"
 
