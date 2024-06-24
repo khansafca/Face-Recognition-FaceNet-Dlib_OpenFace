@@ -54,20 +54,27 @@ def Attendance(emp_id, database_name, timestamp_now, max_pred):
             database=database_name
         )
 
+        Flag = 'True'
+
         emp_id = int(emp_id)
         cursor = connection.cursor()
-        cursor.execute("SELECT name FROM employee WHERE id = %s", (emp_id,))
+        cursor.execute("SELECT Name FROM profil WHERE Id = %s", (emp_id,))
         result = cursor.fetchone()
 
         if result:
             emp_name = result[0]
-
             # Always update the timestamp for demonstration
             if max_pred > 0.8:
                 new_timestamp_now = str(timestamp_now) + '_' + str(max_pred)
-                cursor.execute("UPDATE primer_data SET FaceNet = %s WHERE EmpID = %s", (new_timestamp_now, emp_id))
-                connection.commit()
-                print(f"Updated FaceNet for {emp_name} to {new_timestamp_now}")
+                cursor.execute("SELECT Id FROM presensi")
+                check_id = cursor.fetchone()
+
+                if (check_id == None or emp_id != int(check_id[0])) and (datetime.datetime.now() - face_timer).total_seconds() > 15:
+                    query = "INSERT INTO presensi (Timestamp, Id_kamera, Id, Flag, Engine, Error) VALUES (%s, %s, %s, %s, %s, %s)"
+                    cursor.execute(query, (new_timestamp_now, camera_id, emp_id, Flag, 'FaceNet', ''))
+                    # cursor.execute("UPDATE primer_data SET FaceNet = %s WHERE EmpID = %s", (new_timestamp_now, emp_id))
+                    connection.commit()
+                    print(f"Updated FaceNet for {emp_name} to {new_timestamp_now}")
 
             cursor.close()
             connection.close()
@@ -77,7 +84,7 @@ def Attendance(emp_id, database_name, timestamp_now, max_pred):
         print("Error:", e)
         return None
 
-def log_error(database_name, name, prob, emp_id, real_name):
+def log_error(database_name, max_pred, emp_id, real_name, timestamp_now, camera_id, operator_code):
     """Logs the error details to the data_sys table."""
     try:
         connection = mysql.connector.connect(
@@ -89,21 +96,49 @@ def log_error(database_name, name, prob, emp_id, real_name):
         )
         
         cursor = connection.cursor()
-        timestamp_now = datetime.datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        emp_id = int(emp_id)
-        # real_name = str(real_name)
-        error_message = f'FaceNet_{timestamp_now}_{str(real_name)}_bukan_{name}'
-
-        query = f"SELECT Error FROM primer_data WHERE EmpID = %s"
-        cursor.execute(query, (emp_id,))
-        result = cursor.fetchall()
-
-        if result == [('',)]:
-            cursor.execute("UPDATE primer_data SET Error = %s WHERE EmpID = %s", (error_message, emp_id))
-        else:
-            cursor.execute("UPDATE primer_data SET Error = CONCAT(Error, ', ', %s) WHERE EmpID = %s", (error_message, emp_id))
         
-        connection.commit()
+        # Prepare new timestamp combining timestamp_now and max_pred
+        new_timestamp_now = str(timestamp_now) + '_' + str(max_pred)
+        emp_id = int(emp_id)
+        
+        # Fetch Id from presensi table
+        cursor.execute("SELECT Id FROM presensi")
+        result = cursor.fetchone()
+        Flag = 'False'
+
+        # Fetch real_id from profil table based on real_name
+        cursor.execute("SELECT id FROM profil WHERE name = %s", (real_name,))
+        real_id = cursor.fetchone()
+
+        if result is not None:
+            check_id = result[0]
+
+            # Fetch the latest error count from presensi where Error is not null
+            cursor.execute("SELECT Error FROM presensi WHERE Error IS NOT NULL ORDER BY Timestamp DESC LIMIT 1")
+            result = cursor.fetchone()
+
+            error = result[0] if result is not None else 0
+
+            if emp_id == check_id:
+                error += 1
+                query = "INSERT INTO presensi (Timestamp, Id_kamera, Id, Flag, Engine, Error) VALUES (%s, %s, %s, %s, %s, %s)"
+                cursor.execute(query, (new_timestamp_now, camera_id, emp_id, Flag, 'FaceNet', error))
+                connection.commit()
+
+            query = "INSERT INTO koreksi (Error, Timestamp, Id_kamera, Id_salah, Id_benar, Engine, Kode_operator) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (error, new_timestamp_now, camera_id, emp_id, real_id[0], 'FaceNet', operator_code))
+            connection.commit()
+
+        else:
+            error = 1
+            query = "INSERT INTO presensi (Timestamp, Id_kamera, Id, Flag, Engine, Error) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (timestamp_now, str(camera_id), str(emp_id), Flag, 'FaceNet', error))
+            connection.commit()
+
+            query = "INSERT INTO koreksi (Error, Timestamp, Id_kamera, Id_salah, Id_benar, Engine, Kode_operator) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (error, timestamp_now, str(camera_id), str(emp_id), real_id[0], 'FaceNet', operator_code))
+            connection.commit()
+
         cursor.close()
         connection.close()
         return True
@@ -112,8 +147,30 @@ def log_error(database_name, name, prob, emp_id, real_name):
         print("Error logging to database:", e)
         return False
 
+def notify_gui_of_error(message):
+    try:
+        requests.post('http://localhost:5001/report_error', json={'error_message': message})
+    except Exception as e:
+        print(f"Failed to notify GUI: {e}")
+
+@app.route('/report_error', methods=['POST'])
+def report_error():
+    global capture_active, last_recognized_prob, last_recognized_nameid, real_name, timestamp_now
+    data = request.get_json()
+    real_name = data.get('real_name')
+    
+    if last_recognized_name and last_recognized_prob and last_recognized_nameid:
+        capture_active = False  # Pause capture
+        success = log_error('attendance', last_recognized_prob, last_recognized_nameid, real_name, timestamp_now, camera_id, operator_code)
+        if success:
+            notify_gui_of_error(f"Error reported: {real_name} was not {last_recognized_name}")
+        capture_active = True  # Reactivate the capture promptly
+        return jsonify({'success': success})
+    return jsonify({'success': False})
+
+
 def FaceNet_recog_mp(frame, now):
-    global face_timer, last_recognized_name, last_recognized_prob, last_recognized_nameid, capture_active
+    global face_timer, last_recognized_name, last_recognized_prob, last_recognized_nameid, capture_active, timestamp_now, max_prob, timestamp_now
     if not capture_active:
         return frame, None, None
 
@@ -158,7 +215,6 @@ def FaceNet_recog_mp(frame, now):
         bbox = largest_face_bbox
         face = frame[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]
         if face.size < 75000:
-            # print('Empty face size')
             face_timer = datetime.datetime.now()
             names_probs.clear()
             return frame, None, None
@@ -181,7 +237,7 @@ def FaceNet_recog_mp(frame, now):
         else:
             names_probs[name].append(prob)
 
-        if (datetime.datetime.now() - face_timer).total_seconds() > 2.5:
+        if (datetime.datetime.now() - face_timer).total_seconds() > 3.5:
             if names_probs:
                 most_common_nameid = max(names_probs, key=lambda k: (len(names_probs[k]), max(names_probs[k])))
                 max_prob = max(names_probs[most_common_nameid])
@@ -215,7 +271,7 @@ def FaceNet_recog_mp(frame, now):
                 # cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 0), -1)
                 # cv2.putText(frame, text, (x, y+25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-        elif (datetime.datetime.now() - face_timer).total_seconds() < 2:
+        elif (datetime.datetime.now() - face_timer).total_seconds() < 3:
             text = str(datetime.datetime.now() - face_timer)
             (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
             text_x = x + (w - text_width) // 2
@@ -225,27 +281,6 @@ def FaceNet_recog_mp(frame, now):
             # cv2.putText(frame, str(datetime.datetime.now() - face_timer), (50, 50), font, font_scale, text_color, thickness)
 
     return frame, most_common_name, max_prob
-
-def notify_gui_of_error(message):
-    try:
-        requests.post('http://localhost:5001/report_error', json={'error_message': message})
-    except Exception as e:
-        print(f"Failed to notify GUI: {e}")
-
-@app.route('/report_error', methods=['POST'])
-def report_error():
-    global capture_active, last_recognized_name, last_recognized_prob, last_recognized_nameid, real_name
-    data = request.get_json()
-    real_name = data.get('real_name')
-    
-    if last_recognized_name and last_recognized_prob and last_recognized_nameid:
-        capture_active = False  # Pause capture
-        success = log_error('attendance', last_recognized_name, last_recognized_prob, last_recognized_nameid, real_name)
-        if success:
-            notify_gui_of_error(f"Error reported: {real_name} was not {last_recognized_name}")
-        capture_active = True  # Reactivate the capture promptly
-        return jsonify({'success': success})
-    return jsonify({'success': False})
 
 def gen_frames():
     cap = cv2.VideoCapture(url)
@@ -305,8 +340,24 @@ def video_feed():
 def index():
     return render_template('show.html')
 
+# if __name__ == "__main__":
+#     global camera_id, operator_code
+#     url = 1
+#     camera_id = 2
+#     operator_code = 1409
+#     # url = 1
+#     # CAMERA_URL = 'http://192.168.14.214:4747/video' # android salma
+#     app.run(host='0.0.0.0', port=5000, debug=True)
+
 if __name__ == "__main__":
-    url = 1
+    global camera_id, operator_code
+    parser = argparse.ArgumentParser(description='Face recognition using Facenet and Mediapipe')
+    parser.add_argument('--camera_id', type=str, required=True, help='Camera ID')
+    parser.add_argument('--url', type=str, required=True, help='URL of the video stream')
+    args = parser.parse_args()
+    url = 1 # args.url
+    camera_id = args.camera_id
+    operator_code = 1
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 # def gen_frames():
@@ -329,12 +380,3 @@ if __name__ == "__main__":
 
 # if __name__ == "__main__":
 #     gen_frames()
-
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser(description='Face recognition using Facenet and Mediapipe')
-#     parser.add_argument('--url', type=str, required=True, help='URL of the video stream')
-#     args = parser.parse_args()
-#     url = args.url
-#     # url = 1
-#     # CAMERA_URL = 'http://192.168.14.214:4747/video' # android salma
-#     app.run(host='0.0.0.0', port=5000, debug=True)
