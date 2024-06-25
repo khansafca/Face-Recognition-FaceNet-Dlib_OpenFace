@@ -180,9 +180,9 @@ def create_train_buttons(root):
             print("No folder selected for training data.")
 
     buttons = [
-        ("Facenet Train", lambda: run_train_model('training_facenet.py')),
-        ("Openface Train", lambda: run_train_model('training_openface.py')),
-        ("Dlib Train", lambda: run_train_model('training_dlib.py')),
+        ("Facenet Train", lambda: run_train_model('training_facenet_salma.py')),
+        ("Openface Train", lambda: run_train_model('training_openface_salma.py')),
+        ("Dlib Train", lambda: run_train_model('training_dlib_salma.py')),
     ]
     y_position = 485
     button_width = 14
