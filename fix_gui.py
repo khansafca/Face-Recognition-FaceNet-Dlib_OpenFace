@@ -26,7 +26,7 @@ def run_flask_app():
 # Constants
 DATABASE_DIR = 'database'
 BACKGROUND_IMAGE_PATH = 'template_GUI.png'
-CAMERA_URL = 1  # Default to the first camera
+CAMERA_URL = 0  # 1
 WINDOW_SIZE = "1000x700"
 
 # Create a directory to save the images if it doesn't exist
