@@ -1,43 +1,46 @@
 import argparse
+import face_recognition
+import argparse
 import shutil
 import cv2
 from flask import Flask, Response, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
-import mediapipe as mp
-from PIL import Image
 import time
 import os
 import datetime
 import numpy as np
-from numpy import asarray, expand_dims
-from keras_facenet import FaceNet
 import pickle
 import mysql.connector
 from collections import defaultdict
 import requests
+import dlib
+from collections import defaultdict
+import datetime
+import mysql.connector
+import os
+import pickle
+import dlib
 
 # Initialize
 names_probs = defaultdict(list)
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-# Load MediaPipe face detection model
-mp_face_detection = mp.solutions.face_detection.FaceDetection(min_detection_confidence=0.8)
+# Initialize dlib's face detector and the face recognition model
+detector = dlib.get_frontal_face_detector()
+predictor = dlib.shape_predictor('./model/dlib/shape_predictor_68_face_landmarks.dat')
+face_rec_model = dlib.face_recognition_model_v1('./model/dlib/dlib_face_recognition_resnet_model_v1.dat')
+data = {'encodings': [], 'names': []}  # This should be filled with actual face encodings and corresponding names
 
-# Load FaceNet model
-MyFaceNet = FaceNet()
 face_timer = None
 last_recognized_name = None
 last_recognized_prob = None
 last_recognized_nameid = None
 recognition_paused = False
 
-# Load FaceNet recognizer and label encoder
-with open('./model/facenet/recognizer_facenet.pickle', 'rb') as f:
-    recognizer = pickle.load(f)
-
-with open('./model/facenet/le_facenet.pickle', 'rb') as f:
-    le = pickle.load(f)
+# Load known faces and embeddings
+with open("./model/dlib/encoding_dlib.pickle", "rb") as f:
+    data = pickle.load(f)
 
 def get_next_no():
     try:
@@ -106,7 +109,7 @@ def Attendance(emp_id, database_name, timestamp_now, max_pred):
             cursor.execute("""
                 INSERT INTO presence (No, Timestamp, Id_Camera, Id, Flag, Engine, Error)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (next_no, timestamp_now, camera_id, emp_id, 'True', 'FaceNet', '0'))
+            """, (next_no, timestamp_now, camera_id, emp_id, 'True', 'Dlib', '0'))
             connection.commit()
             cursor.close()
             connection.close()
@@ -136,13 +139,13 @@ def log_error(emp_id, timestamp_now, real_name, operator_code):
         cursor.execute("""
             INSERT INTO presence (No, Timestamp, Id_Camera, Id, Flag, Engine, Error)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (next_no, timestamp_now, camera_id, emp_id, 'False', 'FaceNet', error_no))
+        """, (next_no, timestamp_now, camera_id, emp_id, 'False', 'Dlib', error_no))
         connection.commit()
 
         cursor.execute("""
             INSERT INTO wrong (Error, Timestamp, Id_Camera, Id_Salah, Id_Benar, Engine, Kode_Operator)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (error_no, timestamp_now, camera_id, emp_id, real_name, 'FaceNet', operator_code))
+        """, (error_no, timestamp_now, camera_id, emp_id, real_name, 'Dlib', operator_code))
         connection.commit()
 
         cursor.close()
@@ -153,7 +156,7 @@ def log_error(emp_id, timestamp_now, real_name, operator_code):
         print("Error logging to database:", e)
         return False
 
-def FaceNet_recog_mp(frame, now):
+def Dlib_recog(frame, now):
     global face_timer, last_recognized_name, last_recognized_prob, last_recognized_nameid, recognition_paused, names_probs
 
     height, width, _ = frame.shape
@@ -170,11 +173,11 @@ def FaceNet_recog_mp(frame, now):
         return frame, None, None
 
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = mp_face_detection.process(rgb_frame)
+    faces = detector(rgb_frame)
     prob = 0
     max_prob = 0
 
-    if not results.detections:
+    if len(faces) == 0:
         face_timer = None
         names_probs.clear()
         return frame, None, None
@@ -182,47 +185,38 @@ def FaceNet_recog_mp(frame, now):
     if face_timer is None:
         face_timer = datetime.datetime.now()
 
-    # Initialize text
     text_color, font, font_scale, thickness = (255, 255, 255), cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
     most_common_name, max_face_area, largest_face_bbox = 'Unknown', 0, None
 
-    for detection in results.detections:
-        bboxC = detection.location_data.relative_bounding_box
-        ih, iw, _ = frame.shape
-        bbox = [
-            max(int(bboxC.xmin * iw), 0),
-            max(int(bboxC.ymin * ih), 0),
-            int(bboxC.width * iw),
-            int(bboxC.height * ih)]
-        
-        face_area = bbox[2] * bbox[3]
-        
+    for face in faces:
+        face_area = face.width() * face.height()
         if face_area > max_face_area:
             max_face_area = face_area
-            largest_face_bbox = bbox
+            largest_face_bbox = face
 
     if largest_face_bbox:
         bbox = largest_face_bbox
-        face = frame[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]
+        face = rgb_frame[bbox.top():bbox.bottom(), bbox.left():bbox.right()]
         if face.size < 75000:
             face_timer = datetime.datetime.now()
             names_probs.clear()
             return frame, None, None
+
+        cv2.rectangle(frame, (bbox.left(), bbox.top()), (bbox.right(), bbox.bottom()), (0, 255, 0), 2)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 0), -1)
+
+        shape = predictor(rgb_frame, bbox)
+        face_encoding = np.array(face_rec_model.compute_face_descriptor(rgb_frame, shape))
         
-        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 255, 0), 2) # face rectangle
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 0), -1) # text background rectangle
-        face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-        face = Image.fromarray(face)
-        face = face.resize((160, 160))
-        face = asarray(face)
-        face = expand_dims(face, axis=0)
+        matches = face_recognition.compare_faces(data["encodings"], face_encoding, 0.6)
+        face_distances = face_recognition.face_distance(data["encodings"], face_encoding)
+        best_match_index = np.argmin(face_distances)
 
-        signature = MyFaceNet.embeddings(face)
-        preds = recognizer.predict_proba(signature)
-        name = le.inverse_transform([np.argmax(preds)])[0]
-        prob = round(preds[0][np.argmax(preds)] * 100, 2)
-
-        if prob < 80:
+        if matches[best_match_index]:
+            name = data["names"][best_match_index]
+            prob = round((1 - face_distances[best_match_index]) * 100, 2)
+        
+        if prob < 50:
             name = 'Unknown'
         else:
             names_probs[name].append(prob)
@@ -238,18 +232,17 @@ def FaceNet_recog_mp(frame, now):
             if names_probs:
                 most_common_nameid = max(names_probs, key=lambda k: (len(names_probs[k]), max(names_probs[k])))
                 max_prob = max(names_probs[most_common_nameid])
-                
-                if most_common_nameid != 'Unknown':  # Check if a valid name is detected
+                # print(names_probs)
+
+                if most_common_nameid != 'Unknown':
                     timestamp_now = now.strftime('%Y-%m-%d_%H:%M:%S')
                     most_common_name = Name(most_common_nameid, 'absen')
 
-                    # Construct folder and file names only if most_common_name is not None
                     if most_common_name:
                         folder_name = os.path.join('Capture_Result', most_common_name)
                         os.makedirs(folder_name, exist_ok=True)
-                        photo_name = f"{timestamp_now}_{most_common_name}_FaceNet.jpg"
+                        photo_name = f"{timestamp_now}_{most_common_name}_Dlib.jpg"
                         cv2.imwrite(os.path.join(folder_name, photo_name), frame)
-
                 else:
                     names_probs.clear()
 
@@ -264,24 +257,6 @@ def FaceNet_recog_mp(frame, now):
 
                 cv2.putText(frame, text, (text_x, text_y), font, font_scale, text_color, thickness)
 
-        # print(names_probs)
-
-        # elif (datetime.datetime.now() - face_timer).total_seconds() > 6:
-        #     text1 = str(datetime.datetime.now() - face_timer)
-        #     (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-        #     text_x = x + (w - text_width) // 2
-        #     text_y = y + (h + text_height) // 2
-
-        #     cv2.putText(frame, text1, (text_x, text_y), font, font_scale, text_color, thickness)
-        
-        # elif (datetime.datetime.now() - face_timer).total_seconds() > 10:
-        #     text2 = "Waiting for next recognition"
-        #     (text_width, text_height), baseline = cv2.getTextSize(text2, font, font_scale, thickness)
-        #     text_x = x + (w - text_width) // 2
-        #     text_y = y + (h + text_height) // 2
-
-        #     cv2.putText(frame, text2, (text_x, text_y), font, font_scale, text_color, thickness)
-   
     return frame, most_common_name, max_prob
 
 @app.route('/video_feed')
@@ -327,7 +302,6 @@ def wrong_recognition():
 
         real_name_id = result[0]
 
-        # Ensure the ID values are integers and within the acceptable range
         try:
             real_name_id = int(real_name_id)
             last_recognized_nameid = int(last_recognized_nameid)
@@ -362,22 +336,21 @@ def resume_recognition():
 
 def gen_frames():
     global last_recognized_name, last_recognized_prob, last_recognized_nameid
-
     cap = cv2.VideoCapture(url)
-    time.sleep(3)  # Initial delay for the camera to warm up
+    time.sleep(3)
 
     folder_path = 'Capture_Result'
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
     os.makedirs(folder_path, exist_ok=True)
-    
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
         now = datetime.datetime.now()
-        result, max_name, max_pred = FaceNet_recog_mp(frame, now)
+        result, max_name, max_pred = Dlib_recog(frame, now)
 
         if max_name and max_pred and max_pred > 80:
             timestamp_now = now.strftime('%Y-%m-%d_%H-%M-%S')
@@ -391,10 +364,11 @@ def gen_frames():
         ret, buffer = cv2.imencode('.jpg', result)
 
         if ret:
-            frame_html = buffer.tobytes()  # Convert numpy array to string
+            frame_html = buffer.tobytes()
             yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_html + b'\r\n')
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
 
     cap.release()
@@ -418,7 +392,7 @@ def present_now():
 
 if __name__ == "__main__":
     global camera_id
-    parser = argparse.ArgumentParser(description='Face recognition using Facenet and Mediapipe')
+    parser = argparse.ArgumentParser(description='Face recognition using Dlib')
     parser.add_argument('--camera_id', type=str, required=True, help='Camera ID')
     parser.add_argument('--url', type=str, required=True, help='URL of the video stream')
     args = parser.parse_args()
