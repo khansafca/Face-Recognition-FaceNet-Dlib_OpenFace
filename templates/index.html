@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Streaming</title>
+</head>
+<body>
+    <h1>Live Streaming</h1>
+    <div>
+        <img src="{{ url_for('video') }}" width="50%" />
+    </div>
+    <div>
+        <form action="{{ url_for('run_script') }}" method="get">
+            <button type="submit">Run Script</button>
+        </form>
+    </div>
+</body>
+</html>
