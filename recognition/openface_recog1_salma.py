@@ -180,7 +180,7 @@ def openface_recog(frame, now):
     emp_name = None
     prob = 0
     max_prob = 0
-    (h, w) = frame.shape[:2]
+    (hi, wi) = frame.shape[:2]
 
     # Convert the frame to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -209,10 +209,10 @@ def openface_recog(frame, now):
 
     for i in range(0, face_detections.shape[2]):
         confidence = face_detections[0, 0, i, 2]
-        if confidence < 0.65:
+        if confidence < 0.35:
             continue
 
-        box = face_detections[0, 0, i, 3:7] * np.array([width, height, width, height])
+        box = face_detections[0, 0, i, 3:7] * np.array([wi, hi, wi, hi])
         (startX, startY, endX, endY) = box.astype("int")
         face_area = (endX - startX) * (endY - startY)
 
@@ -223,17 +223,18 @@ def openface_recog(frame, now):
     if largest_face_bbox:
         (startX, startY, endX, endY) = largest_face_bbox
         face = frame[startY:endY, startX:endX]
+        print('face.size = ', face.size)
 
-        if face.size == 0:
+        if face.size < 105600:
             face_timer = datetime.datetime.now()
             names_probs.clear()
             return frame, None, None
-
-        (fH, fW) = face.shape[:2]
-
+        
+        cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
         face_blob = cv2.dnn.blobFromImage(face, 1.0 / 255, (96, 96), (0, 0, 0), True, False)
         face_recognizer.setInput(face_blob)
         vec = face_recognizer.forward()
+
         preds = recognizer.predict_proba(vec)[0]
         emp_id = le.classes_[np.argmax(preds)]
         prob = round(preds[np.argmax(preds)] * 100, 2)
@@ -244,7 +245,7 @@ def openface_recog(frame, now):
             names_probs[emp_id].append(prob)
             emp_name = Name(emp_id, 'absen')
 
-    # print("names_probs =", names_probs)
+    print("names_probs =", names_probs)
 
     most_common_name = 'Unknown'
     max_prob = 0
