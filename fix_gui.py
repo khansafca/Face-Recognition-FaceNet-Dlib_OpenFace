@@ -26,7 +26,7 @@ def run_flask_app():
 # Constants
 DATABASE_DIR = 'database'
 BACKGROUND_IMAGE_PATH = 'template_GUI.png'
-CAMERA_URL = 'http://192.168.1.3:4747/video' #1
+CAMERA_URL = 1 #1
 WINDOW_SIZE = "1000x700"
 
 # Create a directory to save the images if it doesn't exist
@@ -199,8 +199,8 @@ def create_face_recognition(root, url):
 
     buttons = [
         ("Facenet", lambda: start_recognition('facenet_recog1_salma.py')),
-        ("Openface", lambda: start_recognition('openface_recog1.py')),
-        ("Dlib", lambda: start_recognition('dlib_recog1.py'))]
+        ("Openface", lambda: start_recognition('openface_recog1_salma.py')),
+        ("Dlib", lambda: start_recognition('dlib_recog1_salma.py'))]
 
     y_position = 485
     button_width = 12
