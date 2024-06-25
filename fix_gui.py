@@ -26,7 +26,7 @@ def run_flask_app():
 # Constants
 DATABASE_DIR = 'database'
 BACKGROUND_IMAGE_PATH = 'template_GUI.png'
-CAMERA_URL = 0 #1
+CAMERA_URL = 1  # Default to the first camera
 WINDOW_SIZE = "1000x700"
 
 # Create a directory to save the images if it doesn't exist
@@ -130,11 +130,12 @@ class CameraGUI:
         cv2.destroyAllWindows()
 
 def train_model(script_name, data_path):
-    command = f'python training/{script_name} --data_path {data_path}'
+    command = ['python', f'training/{script_name}', '--data_path', data_path]
     if platform.system() == "Windows":
-        subprocess.Popen(['start', 'cmd', '/k', command], shell=True)
+        subprocess.Popen(['start', 'cmd', '/k'] + command, shell=True)
     else:
-        subprocess.Popen(['xterm', '-hold', '-e', command])
+        subprocess.Popen(['xterm', '-hold', '-e'] + command, shell=True)
+
 
 def recognize_model(script_name, url, camera_id):
     global recognize_process, recognize_pid
@@ -159,12 +160,12 @@ def stop_face_recognition():
 
             recognize_pid = None
             recognize_process = None
-            print("Proses pengenalan wajah telah dihentikan")
+            print("Face recognition process has been stopped.")
             
         except Exception as e:
-            print(f"Gagal menghentikan proses pengenalan wajah: {e}")
+            print(f"Failed to stop face recognition process: {e}")
     else:
-        print("Tidak ada proses pengenalan wajah yang sedang berjalan.")
+        print("No face recognition process is currently running.")
 
 def select_folder():
     folder_path = filedialog.askdirectory()
@@ -194,7 +195,6 @@ def create_face_recognition(root, url):
     def start_recognition(script_name):
         camera_id = simpledialog.askstring("Input", "Enter Camera ID:", parent=root)
         if camera_id:
-            # new_url = f"http://192.168.1.{camera_id}:4747/video"
             threading.Thread(target=recognize_model, args=(script_name, url, camera_id)).start()
 
     buttons = [
@@ -209,7 +209,6 @@ def create_face_recognition(root, url):
         button.place(x=737, y=y_position)
         y_position += 50
 
-
 if __name__ == "__main__":
     root = tk.Tk()
     root.geometry("800x600")
@@ -219,25 +218,23 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    tk.Button(root, text="Train The Data",  font=("Arial", 10), height=1, width=12).place(x=450, y=435)
+    tk.Button(root, text="Train The Data", font=("Arial", 10), height=1, width=12).place(x=450, y=435)
     create_train_buttons(root)
     tk.Button(root, text="Start Recognize", font=("Arial", 10), height=1, width=14).place(x=730, y=435)
     create_face_recognition(root, CAMERA_URL)
     tk.Button(root, text="Stop Recognize", command=stop_face_recognition, font=("Arial", 10, 'bold'), height=1, width=14).place(x=442, y=360)
-    #tk.Button(root, text="Stop Recognize", command=stop_face_recognition, font=("Arial", 10), height=1, width=103).place(x=85, y=365)
 
     def check_for_errors():
         global error_message
         if error_message:
-            error_label.config(text=error_message)
+            error_label = tk.Label(root, text=error_message, fg="red", bd=0, highlightthickness=0)
+            error_label.place(relx=0.5, rely=0.47, anchor=tk.CENTER)
             error_message = None
+            root.after(5000, error_label.destroy)
+
         root.after(1000, check_for_errors)
 
-    error_label = tk.Label(root, text="", font=("Arial", 11), fg="red", bd=0, highlightthickness=0)
-    error_label.place(relx=0.5, rely=0.47, anchor=tk.CENTER)
-
-
-    root.after(1000, check_for_errors)
+    check_for_errors()
 
     try:
         root.mainloop()
