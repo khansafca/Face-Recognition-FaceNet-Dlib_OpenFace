@@ -66,8 +66,20 @@ def main(data_path):
                 box = face_detections[0, 0, i, 3:7] * np.array([width, height, width, height])
                 (startX, startY, endX, endY) = box.astype("int")
 
+                # Ensure the ROI is within image bounds
+                if startX < 0 or startY < 0 or endX > width or endY > height:
+                    continue
+
                 face = image[startY:endY, startX:endX]
-                face_blob = cv2.dnn.blobFromImage(face, 1.0/255, (96, 96), (0, 0), True, False)
+
+                if face.size == 0:  # Check if face extraction failed
+                    continue
+
+                # Resize the face to 96x96 for the model
+                face_resized = cv2.resize(face, (96, 96))
+
+                # Preprocess the face for the face_recognizer
+                face_blob = cv2.dnn.blobFromImage(face_resized, 1.0/255, (96, 96), (0, 0, 0), swapRB=True, crop=False)
 
                 face_recognizer.setInput(face_blob)
                 face_recognitions = face_recognizer.forward()
